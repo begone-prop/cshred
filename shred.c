@@ -1,4 +1,6 @@
 #define _GNU_SOURCE
+#define _DEFAULT_SOURCE
+#define _XOPEN_SOURCE 500
 
 #include <err.h>
 #include <errno.h>
@@ -23,8 +25,10 @@ bool exact = false;
 static int rand_fd = -1;
 
 size_t roundToNearestBlockSize(size_t size, size_t block_size) {
-    if(size && size <= block_size) return block_size;
-    size_t div = size / block_size;
+    if(size <= block_size) return block_size;
+    if(size && (size % block_size) == 0) return size;
+
+    size_t div = (size / block_size) + 1;
     return div * block_size;
 }
 
@@ -77,7 +81,7 @@ ssize_t writeRandomBytes(int fd, size_t size) {
             exit(EXIT_FAILURE);
         }
 
-        size_t bw = write(fd, bytes_buffer, br);
+        size_t bw = pwrite(fd, bytes_buffer, br, bytesw);
 
         if(bw == -1) {
             perror("write");
@@ -89,10 +93,12 @@ ssize_t writeRandomBytes(int fd, size_t size) {
 
     free(bytes_buffer);
 
-    return 0;
+    return bytesw;
 }
 
 int main(int argc, char **argv) {
+    (void) argc;
+    (void) argv;
 
     if(!setlocale(LC_ALL, "C"))
         fprintf(stderr, "Failed to system set locale to C\n");
@@ -117,7 +123,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("Size: %zu\n", file_info.st_size);
+    printf("File size: %zu\n", file_info.st_size);
     printf("Block size: %zu\n", file_info.st_blksize);
 
     size_t target_bytes = 0;
@@ -126,12 +132,22 @@ int main(int argc, char **argv) {
         target_bytes = roundToNearestBlockSize(file_info.st_size, file_info.st_blksize);
     } else target_bytes = file_info.st_size;
 
-    ssize_t bytesw = writeRandomBytes(fd, target_bytes);
+    size_t num_iter = 3;
 
-    if(bytesw == -1) {
-        fprintf(stderr, "%s: Failed to write random bytes to %s\n", program_invocation_short_name, file_path);
-        return 1;
+    ssize_t total = 0;
+
+    for(size_t iter = 0; iter < num_iter; iter++) {
+        ssize_t bytesw = writeRandomBytes(fd, target_bytes);
+
+        if(bytesw == -1) {
+            fprintf(stderr, "%s: Failed to write random bytes to %s\n", program_invocation_short_name, file_path);
+            return 1;
+        }
+
+        total += bytesw;
     }
+
+    printf("Written bytes: %zu\n", total / num_iter);
 
     close(fd);
     if(rand_fd) close(rand_fd);
