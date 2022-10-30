@@ -118,7 +118,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if ((S_ISCHR(file_info.st_mode) && isatty(fd)) || S_ISFIFO(file_info.st_mode) || S_ISSOCK(file_info.st_mode)) {
+    if((S_ISCHR(file_info.st_mode) && isatty(fd)) || S_ISFIFO(file_info.st_mode) || S_ISSOCK(file_info.st_mode)) {
         fprintf(stderr, "%s: %s is not a valid file type\n", program_invocation_short_name, file_path);
         return 1;
     }
@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
         total += bytesw;
     }
 
-    printf("Written bytes: %zu\n", total / num_iter);
+    printf("Written bytes: %zu (%zu)\n", total, total / num_iter);
 
     close(fd);
     if(rand_fd) close(rand_fd);
