@@ -23,10 +23,10 @@ ssize_t writeRandomBytes(int, size_t);
 ssize_t getRandomBytes(const char*, void*, size_t);
 
 enum rm_method {
-    rm_none,
-    rm_unlink = 0,
+    rm_none = 0,
+    rm_unlink,
     rm_wipe,
-    rm_wipsync
+    rm_wipesync
 };
 
 static const char *rm_method_names[] = {
@@ -59,6 +59,7 @@ static const char* random_source = "/dev/urandom";
 
 static int rand_fd = -1;
 static int def_iter = 3;
+static enum rm_method def_remove = rm_wipesync;
 
 static long int parseAndRangeCheckArg(const char *arg) {
     char *end = NULL;
@@ -133,6 +134,8 @@ ssize_t writeRandomBytes(int fd, size_t size) {
             perror("write");
             return -1;
         }
+
+        fdatasync(fd);
 
         bytesw += bw;
     }
@@ -223,6 +226,9 @@ int main(int argc, char **argv) {
     }
 
     prog_flags.iterations =  prog_flags.iterations == 0 ? def_iter : prog_flags.iterations;
+    prog_flags.how_remove = prog_flags.how_remove == 0 ? def_remove : prog_flags.how_remove;
+
+    printf("Remove method %s [%i]\n", rm_method_names[prog_flags.how_remove], prog_flags.how_remove);
     struct stat file_info;
 
     if(argc == optind) {
@@ -282,5 +288,5 @@ int main(int argc, char **argv) {
 
     if(rand_fd) close(rand_fd);
 
-    return 0;
+    return exit_status;
 }
