@@ -2,7 +2,9 @@
 #define _DEFAULT_SOURCE
 #define _XOPEN_SOURCE 500
 
-#include <err.h>
+#include <errno.h>
+#include <libgen.h>
+#include <assert.h>
 #include <string.h>
 #include <inttypes.h>
 #include <errno.h>
@@ -21,6 +23,10 @@ static long int parseAndRangeCheckArg(const char*);
 size_t roundToNearestBlockSize(size_t, size_t);
 ssize_t writeRandomBytes(int, size_t);
 ssize_t getRandomBytes(const char*, void*, size_t);
+bool incname (char*, size_t);
+
+static char const nameset[] =
+"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_.";
 
 typedef int (*rm_func_proto)(const char*);
 
@@ -45,12 +51,43 @@ static const char *rm_method_names[] = {
 
 int rm_func_unlink(const char* path) {
     int retval = unlink(path);
-    return -retval;
+    if(retval != 0) return -errno;
+    return 1;
 }
 
 int rm_func_wipe(const char* path) {
-    fprintf(stderr, "Not implemented\n");
-    return -1;
+
+    char *oldname = strdup(path);
+    char *newname = strdup(path);
+
+    char *base = basename(newname);
+    size_t base_len = strlen(base);
+
+    for(size_t len = base_len; len != 0; len--) {
+        memset(base, nameset[0], len);
+        base[len] = '\0';
+        bool rename_ok;
+
+        /*printf("%s -> %s\n", oldname, newname);*/
+
+        while(!(rename_ok = (renameat2(AT_FDCWD, oldname, AT_FDCWD, newname, RENAME_NOREPLACE) == 0))
+                        && errno == EEXIST && incname(base, len))
+            continue;
+
+        if(rename_ok) memcpy(oldname + (base - newname), base, len + 1);
+        else {
+            fprintf(stderr, "Failed to unlink\n");
+            return -errno;
+        }
+    }
+
+    int retval = unlink(newname);
+    if(retval != 0) return -errno;
+
+    free(newname);
+    free(oldname);
+
+    return 1;
 }
 
 int rm_func_wipesync(const char* path) {
@@ -85,6 +122,23 @@ static const char* random_source = "/dev/urandom";
 static int rand_fd = -1;
 static int def_iter = 3;
 static enum rm_method def_remove = rm_wipesync;
+
+bool incname(char *name, size_t len) {
+    while(len--) {
+        char const *p = strchr(nameset, name[len]);
+
+        assert (p);
+
+        if(p[1]) {
+            name[len] = p[1];
+            return true;
+        }
+
+        name[len] = nameset[0];
+    }
+
+    return false;
+}
 
 static long int parseAndRangeCheckArg(const char *arg) {
     char *end = NULL;
@@ -160,7 +214,7 @@ ssize_t writeRandomBytes(int fd, size_t size) {
             return -1;
         }
 
-        fdatasync(fd);
+        fsync(fd);
 
         bytesw += bw;
     }
