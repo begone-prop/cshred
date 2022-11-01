@@ -22,6 +22,16 @@ size_t roundToNearestBlockSize(size_t, size_t);
 ssize_t writeRandomBytes(int, size_t);
 ssize_t getRandomBytes(const char*, void*, size_t);
 
+typedef int (*rm_func_proto)(const char*);
+
+int rm_func_unlink(const char*);
+int rm_func_wipe(const char*);
+int rm_func_wipesync(const char*);
+
+rm_func_proto rm_func_table[] = {
+    NULL, rm_func_unlink, rm_func_wipe, rm_func_wipesync
+};
+
 enum rm_method {
     rm_none = 0,
     rm_unlink,
@@ -32,6 +42,21 @@ enum rm_method {
 static const char *rm_method_names[] = {
     NULL, "unlink", "wipe", "wipesync"
 };
+
+int rm_func_unlink(const char* path) {
+    int retval = unlink(path);
+    return -retval;
+}
+
+int rm_func_wipe(const char* path) {
+    fprintf(stderr, "Not implemented\n");
+    return -1;
+}
+
+int rm_func_wipesync(const char* path) {
+    fprintf(stderr, "Not implemented\n");
+    return -1;
+}
 
 static const size_t rm_method_names_size = sizeof(rm_method_names) / sizeof(rm_method_names[0]);
 
@@ -200,7 +225,7 @@ int main(int argc, char **argv) {
             }
 
             case 'u':
-                prog_flags.how_remove = 3;
+                prog_flags.how_remove = def_remove;
                 break;
 
             case 'v':
@@ -226,7 +251,6 @@ int main(int argc, char **argv) {
     }
 
     prog_flags.iterations =  prog_flags.iterations == 0 ? def_iter : prog_flags.iterations;
-    prog_flags.how_remove = prog_flags.how_remove == 0 ? def_remove : prog_flags.how_remove;
 
     printf("Remove method %s [%i]\n", rm_method_names[prog_flags.how_remove], prog_flags.how_remove);
     struct stat file_info;
@@ -250,13 +274,13 @@ int main(int argc, char **argv) {
         if(fstat(fd, &file_info) == -1) {
             perror("stat");
             exit_status &= 1;
-            continue;
+            goto final;
         }
 
         if((S_ISCHR(file_info.st_mode) && isatty(fd)) || S_ISFIFO(file_info.st_mode) || S_ISSOCK(file_info.st_mode)) {
             fprintf(stderr, "%s: %s is not a valid file type\n", program_invocation_short_name, file_path);
             exit_status &= 1;
-            continue;
+            goto final;
         }
 
         printf("File size: %zu\n", file_info.st_size);
@@ -277,12 +301,24 @@ int main(int argc, char **argv) {
 
             if(bytesw == -1) {
                 fprintf(stderr, "%s: Failed to write random bytes to %s\n", program_invocation_short_name, file_path);
+                goto final;
             }
 
             total += bytesw;
         }
 
         printf("Written bytes: %zu (%zu)\n", total, total / prog_flags.iterations);
+
+        if(prog_flags.how_remove != 0) {
+            printf("Remove method: %s\n", rm_method_names[prog_flags.how_remove]);
+            int retval = rm_func_table[prog_flags.how_remove](file_path);
+            if(retval < 0) {
+                fprintf(stderr, "%s: Failed to remove %s: %s\n", program_invocation_short_name, file_path, strerror(-retval));
+                goto final;
+            }
+        }
+
+        final:
         close(fd);
     }
 
