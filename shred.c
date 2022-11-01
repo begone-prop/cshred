@@ -23,7 +23,7 @@ static long int parseAndRangeCheckArg(const char*);
 size_t roundToNearestBlockSize(size_t, size_t);
 ssize_t writeRandomBytes(int, size_t);
 ssize_t getRandomBytes(const char*, void*, size_t);
-bool incname (char*, size_t);
+bool incname(char*, size_t);
 
 static char const nameset[] =
 "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_.";
@@ -56,7 +56,6 @@ int rm_func_unlink(const char* path) {
 }
 
 int rm_func_wipe(const char* path) {
-
     char *oldname = strdup(path);
     char *newname = strdup(path);
 
@@ -67,8 +66,6 @@ int rm_func_wipe(const char* path) {
         memset(base, nameset[0], len);
         base[len] = '\0';
         bool rename_ok;
-
-        /*printf("%s -> %s\n", oldname, newname);*/
 
         while(!(rename_ok = (renameat2(AT_FDCWD, oldname, AT_FDCWD, newname, RENAME_NOREPLACE) == 0))
                         && errno == EEXIST && incname(base, len))
@@ -91,8 +88,21 @@ int rm_func_wipe(const char* path) {
 }
 
 int rm_func_wipesync(const char* path) {
-    fprintf(stderr, "Not implemented\n");
-    return -1;
+    char *path_cpy = strdup(path);
+    char *dir = dirname(path_cpy);
+
+    int dir_fd = open(dir, O_RDONLY | O_DIRECTORY | O_NOCTTY | O_NONBLOCK);
+    if(dir_fd == -1) goto final;
+
+    int retval = rm_func_wipe(path);
+    if(retval < 0) return retval;
+
+    fsync(dir_fd);
+    close(dir_fd);
+
+    final:
+    free(path_cpy);
+    return 1;
 }
 
 static const size_t rm_method_names_size = sizeof(rm_method_names) / sizeof(rm_method_names[0]);
